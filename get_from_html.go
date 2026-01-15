@@ -3,8 +3,17 @@ package main
 import (
 	"fmt"
 	"strings"
+	"net/url"
 	"github.com/PuerkitoBio/goquery"
 )
+
+type PageData struct {
+	URL            string
+	H1             string
+	FirstParagraph string
+	OutgoingLinks  []string
+	ImageURLs      []string
+}
 
 func getH1FromHTML(html string) string {
 	r := strings.NewReader(html)
@@ -34,4 +43,93 @@ func getFirstParagraphFromHTML(html string) string {
 
 	docP := doc.Find("p").First().Text()
 	return strings.TrimSpace(docP)
+}
+
+func getURLsFromHTML(htmlBody string, baseURL *url.URL) ([]string, error) {
+	r := strings.NewReader(htmlBody)
+	doc, err := goquery.NewDocumentFromReader(r)
+	if err != nil {
+		fmt.Errorf("error: %w", err)	
+		return []string{}, err
+	}
+
+	foundURLs := []string{}
+	doc.Find("a[href]").Each(func(_ int, s *goquery.Selection) {
+		href, exists := s.Attr("href")
+
+		if exists {
+			readyURL, err := baseURL.Parse(href)
+			if err != nil {
+				fmt.Errorf("error: %w", err)
+			} else {
+				foundURLs = append(foundURLs, readyURL.String())
+			}
+		}
+
+	})
+
+	return foundURLs, nil
+}
+
+func getImagesFromHTML(htmlBody string, baseURL *url.URL) ([]string, error) {
+	r := strings.NewReader(htmlBody)
+	doc, err := goquery.NewDocumentFromReader(r)
+	if err != nil {
+		fmt.Errorf("error: %w", err)	
+		return []string{}, err
+	}
+
+	foundURLs := []string{}
+	doc.Find("img[src]").Each(func(_ int, s *goquery.Selection) {
+		src, exists := s.Attr("src")	
+
+		if exists {
+			readyURL, err := baseURL.Parse(src)
+			if err != nil {
+				fmt.Errorf("error: %w", err)
+			} else {
+				foundURLs = append(foundURLs, readyURL.String())
+			}
+		}
+
+	})
+
+
+	return foundURLs, nil
+}
+
+func extractPageData(html, pageURL string) PageData {
+	h1 := getH1FromHTML(html)
+	fp := getFirstParagraphFromHTML(html)
+
+	baseURL, err := url.Parse(pageURL)
+	if err != nil {
+		return PageData{
+			URL: pageURL,
+			H1: h1,
+			FirstParagraph: fp,
+			OutgoingLinks: nil,
+			ImageURLs: nil,
+		}
+	}
+
+	outLinks, err := getURLsFromHTML(html, baseURL)
+	if err != nil {
+		fmt.Errorf("error: %v", err)
+		return PageData{}
+	}
+
+	imgURLs, err := getImagesFromHTML(html, baseURL)
+	if err != nil {
+		fmt.Errorf("error: %v", err)
+		return PageData{}
+	}
+
+	return PageData{
+		URL: pageURL,
+		H1: h1,
+		FirstParagraph: fp,
+		OutgoingLinks: outLinks,
+		ImageURLs: imgURLs,
+	}
 }
