@@ -1,17 +1,32 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"os"
+)
 
 
 func main() {
-	fmt.Println("Hello, World!")
+	args := os.Args[1:]
 
-	_, err := normalizeURL("https://blog.boot.dev/path/")
-	if err != nil {
-		fmt.Println("not worked")
+	if len(args) < 1 {
+		fmt.Println("no website provided")
+		os.Exit(1)
 	}
 
-	input_body := "<html><body><h1>Test Title</h1></body></html>"
-	header1 := getH1FromHTML(input_body)
-	fmt.Println(header1)
+	if len(args) > 1 {
+		fmt.Println("too many arguments provided")
+		os.Exit(1)
+	} 
+	
+	baseURL := args[0]
+	fmt.Println("starting crawl of:", baseURL)
+
+	htmlString, err := getHTML(baseURL)
+	if err != nil {
+		fmt.Println("error:", err)
+		os.Exit(1)
+	}
+
+	fmt.Println(htmlString)
 }

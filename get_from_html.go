@@ -1,9 +1,11 @@
 package main 
 
 import (
+	"io"
 	"fmt"
 	"strings"
 	"net/url"
+	"net/http"
 	"github.com/PuerkitoBio/goquery"
 )
 
@@ -13,6 +15,41 @@ type PageData struct {
 	FirstParagraph string
 	OutgoingLinks  []string
 	ImageURLs      []string
+}
+
+func getHTML(rawURL string) (string, error) {
+	req, err := http.NewRequest("GET", rawURL, nil)
+	if err != nil {
+		fmt.Println("error:", err)
+		return "", err
+	}
+
+	req.Header.Set("User-Agent", "MiniCrawler/1.0")
+
+	client := &http.Client{}
+	res, err := client.Do(req)
+	if err != nil {
+		fmt.Println("error:", err)
+		return "", err
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode >= 400 {
+		return "", fmt.Errorf("error: %v\n", res.Status)
+	}
+
+	contentType := res.Header.Get("Content-Type")
+	if !strings.Contains(contentType, "text/html") {
+		return "", fmt.Errorf("error: %v\n", contentType)
+	}
+
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		fmt.Println("error:", err)
+		return "", err
+	}
+		
+	return string(body), nil
 }
 
 func getH1FromHTML(html string) string {
