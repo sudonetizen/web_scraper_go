@@ -17,6 +17,62 @@ type PageData struct {
 	ImageURLs      []string
 }
 
+func crawlPage(rawBaseURL, rawCurrentURL string, pages map[string]int) error {
+	parsedBaseURL, err := url.Parse(rawBaseURL)
+	if err != nil {
+		fmt.Printf("error: %v\n", err)
+		return err
+	}
+
+	parsedCurrentURL, err := url.Parse(rawCurrentURL)
+	if err != nil {
+		fmt.Printf("error: %v\n", err)
+		return err	
+	}
+
+	if parsedBaseURL.Hostname() != parsedCurrentURL.Hostname() {
+		return fmt.Errorf("base url: %v, current url: %v", parsedBaseURL, parsedCurrentURL)
+	}
+
+	normalizedURL, err := normalizeURL(rawCurrentURL)
+	if err != nil {
+		fmt.Println("error:", err)
+		return err
+	}
+
+	_, ok := pages[normalizedURL]
+	if ok {
+		pages[normalizedURL] += 1
+		return nil
+	} 
+	
+	pages[normalizedURL] = 1
+
+	htmlString, err := getHTML(rawCurrentURL)
+	if err != nil {
+		fmt.Println("error:", err)
+		return err
+	}
+
+	allURLs, err := getURLsFromHTML(htmlString, parsedBaseURL)
+	if err != nil {
+		fmt.Println("error:", err)
+		return err
+	}
+
+	for _, url := range allURLs {
+		err := crawlPage(rawBaseURL, url, pages)
+		if err != nil {
+			continue
+		}
+
+		fmt.Printf("crawled: %v\n", url)
+	}
+
+	return nil
+
+}
+
 func getHTML(rawURL string) (string, error) {
 	req, err := http.NewRequest("GET", rawURL, nil)
 	if err != nil {
