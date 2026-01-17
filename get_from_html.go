@@ -3,11 +3,20 @@ package main
 import (
 	"io"
 	"fmt"
+	"sync"
 	"strings"
 	"net/url"
 	"net/http"
 	"github.com/PuerkitoBio/goquery"
 )
+
+type config struct {
+	pages              map[string]PageData
+	baseURL            *url.URL
+	mu                 *sync.Mutex
+	concurrencyControl chan struct{}
+	wg                 *sync.WaitGroup
+}
 
 type PageData struct {
 	URL            string
@@ -15,6 +24,88 @@ type PageData struct {
 	FirstParagraph string
 	OutgoingLinks  []string
 	ImageURLs      []string
+}
+
+func (cfg *config) addPageVisit(normalizedURL string) (isFirst bool) {
+	cfg.mu.Lock()
+	defer cfg.mu.Unlock()
+
+	_, ok := cfg.pages[normalizedURL]
+	if ok {
+		return false
+	} 
+
+	return true
+}
+
+func (cfg *config) addPage(normalizedURL, rawCurrentURL, htmlString string) {
+	cfg.mu.Lock()
+	defer cfg.mu.Unlock()
+	cfg.pages[normalizedURL] = extractPageData(htmlString, rawCurrentURL)
+}
+
+func (cfg *config) crawlPage(rawCurrentURL string) error {
+	cfg.concurrencyControl <- struct{}{}
+	defer func() {
+		<-cfg.concurrencyControl
+		cfg.wg.Done()
+	}()
+
+
+	parsedCurrentURL, err := url.Parse(rawCurrentURL)
+	if err != nil {
+		fmt.Printf("error: %v\n", err)
+		return err
+	}
+
+	if cfg.baseURL.Hostname() != parsedCurrentURL.Hostname() {
+		return fmt.Errorf("base url: %v, current url: %v\n", cfg.baseURL.Hostname(), parsedCurrentURL)
+	}
+
+
+	normalizedURL, err := normalizeURL(rawCurrentURL)
+	if err != nil {
+		fmt.Println("error:", err)
+		return err
+	}
+
+	isFirst := cfg.addPageVisit(normalizedURL)
+	if !isFirst { return fmt.Errorf("visited\n")}
+
+	htmlString, err := getHTML(rawCurrentURL)
+	if err != nil {
+		fmt.Println("error:", err)
+		return err
+	}
+
+	cfg.addPage(normalizedURL, rawCurrentURL, htmlString)
+
+	allURLs, err := getURLsFromHTML(htmlString, parsedCurrentURL)
+	if err != nil {
+		fmt.Println("error:", err)
+		return err
+	}
+
+	allURLs2 := []string{}
+
+	for _, url := range allURLs {
+		if !strings.HasSuffix(url, ".xml") {
+			allURLs2 = append(allURLs2, url)	
+		}
+	}
+
+
+		
+	for _, url := range allURLs2 {
+		cfg.wg.Add(1)
+		go func(url string) {
+			err := cfg.crawlPage(url)
+			if err != nil {return}
+			fmt.Printf("crawled: %v\n", url)
+		}(url)
+	}
+
+	return nil
 }
 
 func crawlPage(rawBaseURL, rawCurrentURL string, pages map[string]int) error {
