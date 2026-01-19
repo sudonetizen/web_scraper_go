@@ -16,6 +16,7 @@ type config struct {
 	mu                 *sync.Mutex
 	concurrencyControl chan struct{}
 	wg                 *sync.WaitGroup
+	maxPages           int
 }
 
 type PageData struct {
@@ -24,6 +25,12 @@ type PageData struct {
 	FirstParagraph string
 	OutgoingLinks  []string
 	ImageURLs      []string
+}
+
+func (cfg *config) pagesLen() int {
+	cfg.mu.Lock()
+	defer cfg.mu.Unlock()
+	return len(cfg.pages)
 }
 
 func (cfg *config) addPageVisit(normalizedURL string) (isFirst bool) {
@@ -35,6 +42,7 @@ func (cfg *config) addPageVisit(normalizedURL string) (isFirst bool) {
 		return false
 	} 
 
+	cfg.pages[normalizedURL] = PageData{URL: normalizedURL}
 	return true
 }
 
@@ -51,6 +59,9 @@ func (cfg *config) crawlPage(rawCurrentURL string) error {
 		cfg.wg.Done()
 	}()
 
+	if cfg.pagesLen() >= cfg.maxPages {
+		return fmt.Errorf("max pages are reached\n")
+	}
 
 	parsedCurrentURL, err := url.Parse(rawCurrentURL)
 	if err != nil {
@@ -71,6 +82,8 @@ func (cfg *config) crawlPage(rawCurrentURL string) error {
 
 	isFirst := cfg.addPageVisit(normalizedURL)
 	if !isFirst { return fmt.Errorf("visited\n")}
+
+	fmt.Printf("crawled: %v\n", rawCurrentURL)
 
 	htmlString, err := getHTML(rawCurrentURL)
 	if err != nil {
@@ -101,7 +114,6 @@ func (cfg *config) crawlPage(rawCurrentURL string) error {
 		go func(url string) {
 			err := cfg.crawlPage(url)
 			if err != nil {return}
-			fmt.Printf("crawled: %v\n", url)
 		}(url)
 	}
 
