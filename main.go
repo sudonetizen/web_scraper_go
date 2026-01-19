@@ -78,6 +78,12 @@ func main() {
 	fmt.Printf("time: %v\n", elapsed)
 	fmt.Println(len(pagesData))
 
+	err = writeCSVReport(cfg.pages, "report.csv")
+	if err != nil {
+		fmt.Println("error:", err)
+		return
+	}
+
 	/*
 	for k, v := range pagesData {
 		fmt.Printf("%v - %v\n", k, v)
